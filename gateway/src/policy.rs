@@ -27,8 +27,6 @@ pub struct EvalContext {
     pub path: String,
 }
 
-// Typed errors around the ledger call so callers can distinguish a clean
-// deny from a transport failure. Both still resolve to deny (see .final).
 #[derive(Debug, Error)]
 pub enum PolicyError {
     #[error("ledger transport: {0}")]
@@ -52,7 +50,6 @@ pub struct FabricPolicyClient {
 }
 
 impl FabricPolicyClient {
-    // Inner call returns a typed Result. The trait method below collapses it.
     fn try_evaluate(
         &self,
         id: &Identity,
@@ -77,15 +74,28 @@ impl FabricPolicyClient {
 }
 
 impl PolicyClient for FabricPolicyClient {
+    // FIX: an Err from the ledger was previously allowed to bubble up, and a
+    // caller upstream treated the missing decision as inconclusive -> allow.
+    // That inverts the invariant. Collapse EVERY Err and timeout to an
+    // explicit DENY right here so no error ever leaves this function as
+    // anything but a deny. Nothing above this call can turn a failure into an
+    // allow because a failure is no longer representable as one.
+    //
+    // FAIL CLOSED: ledger unreachable, timeout, decode failure -> deny.
+    // (Revocation is live ledger state, so a revoked identity denies on its
+    // very next request; there is no cached grant to go stale.)
     fn evaluate(&self, id: &Identity, action: &str, ctx: &EvalContext) -> Decision {
         match self.try_evaluate(id, action, ctx) {
             Ok(d) => d,
-            Err(e) => Decision::deny(&format!("ledger error: {e}")),
+            Err(PolicyError::Timeout) => Decision::deny("ledger unreachable"),
+            Err(e) => {
+                // Any transport/decode error is a deny, full stop.
+                Decision::deny(&format!("ledger unreachable: {e}"))
+            }
         }
     }
 }
 
-// Placeholder for the Fabric gateway SDK evaluate call with a timeout applied.
 fn fabric_query(
     _endpoint: &str,
     _channel: &str,
