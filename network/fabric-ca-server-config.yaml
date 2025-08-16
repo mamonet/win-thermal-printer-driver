@@ -1,0 +1,89 @@
+# network/fabric-ca-server-config.yaml
+# Placeholder Fabric CA config. REPLACE_ME bootstrap identity must be changed
+# before any real use. Do not commit enrolled certs/keys produced from this.
+version: 1.5.0
+
+port: 7054
+debug: false
+
+tls:
+  enabled: true
+  # certfile/keyfile are generated on first start into FABRIC_CA_HOME.
+  certfile:
+  keyfile:
+
+ca:
+  name: ca-org1
+  # Left blank => self-signed CA cert generated on first start.
+  certfile:
+  keyfile:
+
+# Bootstrap admin. OBVIOUS placeholder; override with -b or edit before start.
+registry:
+  maxenrollments: -1
+  identities:
+    - name: REPLACE_ME_ADMIN
+      pass: REPLACE_ME_ADMINPW
+      type: client
+      affiliation: ""
+      attrs:
+        hf.Registrar.Roles: "*"
+        hf.Registrar.DelegateRoles: "*"
+        hf.Revoker: true
+        hf.IntermediateCA: true
+        hf.GenCRL: true
+        hf.Registrar.Attributes: "*"
+        hf.AffiliationMgr: true
+
+affiliations:
+  org1:
+    - department1
+  org2:
+    - department1
+
+signing:
+  default:
+    usage:
+      - digital signature
+    expiry: 8760h
+  profiles:
+    ca:
+      usage:
+        - cert sign
+        - crl sign
+      expiry: 43800h
+      caconstraint:
+        isca: true
+        maxpathlen: 0
+    tls:
+      usage:
+        - signing
+        - key encipherment
+        - server auth
+        - client auth
+        - key agreement
+      expiry: 8760h
+
+csr:
+  cn: ca-org1
+  keyrequest:
+    algo: ecdsa
+    size: 256
+  names:
+    - C: US
+      ST: Placeholder
+      L: Placeholder
+      O: Org1
+      OU: ""
+  hosts:
+    - ca.org1.example.com
+    - localhost
+  ca:
+    expiry: 131400h
+    pathlength: 1
+
+bccsp:
+  default: SW
+  sw:
+    hash: SHA2
+    security: 256
