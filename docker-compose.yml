@@ -1,0 +1,131 @@
+# docker-compose.yml
+# Fabric test network for zt-policy-gateway: 1 orderer, 2 peers (Org1/Org2),
+# 1 Fabric CA, plus the gateway service. All IDs/URLs/paths are PLACEHOLDERS.
+# Crypto material is produced by the network scripts and mounted, never committed.
+version: "3.7"
+
+networks:
+  ztnet:
+    name: ztnet
+
+volumes:
+  orderer.example.com:
+  peer0.org1.example.com:
+  peer0.org2.example.com:
+
+services:
+  ca.org1.example.com:
+    image: hyperledger/fabric-ca:1.5
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-org1
+      - FABRIC_CA_SERVER_TLS_ENABLED=true
+      - FABRIC_CA_SERVER_PORT=7054
+    ports:
+      - "7054:7054"
+    command: sh -c 'fabric-ca-server start -b REPLACE_ME_ADMIN:REPLACE_ME_ADMINPW -d'
+    volumes:
+      - ./network/fabric-ca-server-config.yaml:/etc/hyperledger/fabric-ca-server/fabric-ca-server-config.yaml
+      - ./organizations/fabric-ca/org1:/etc/hyperledger/fabric-ca-server
+    networks:
+      - ztnet
+
+  orderer.example.com:
+    image: hyperledger/fabric-orderer:2.5
+    environment:
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      - ORDERER_GENERAL_TLS_ENABLED=true
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
+    command: orderer
+    ports:
+      - "7050:7050"
+    volumes:
+      - ./organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp:/var/hyperledger/orderer/msp
+      - ./organizations/ordererOrganizations/example.com/orderers/orderer.example.com/tls:/var/hyperledger/orderer/tls
+      - orderer.example.com:/var/hyperledger/production/orderer
+    networks:
+      - ztnet
+
+  peer0.org1.example.com:
+    image: hyperledger/fabric-peer:2.5
+    environment:
+      - CORE_PEER_ID=peer0.org1.example.com
+      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+      - CORE_PEER_LOCALMSPID=Org1MSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/fabric/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+    ports:
+      - "7051:7051"
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - ./organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/msp:/etc/hyperledger/fabric/msp
+      - ./organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls:/etc/hyperledger/fabric/tls
+      - peer0.org1.example.com:/var/hyperledger/production
+    depends_on:
+      - orderer.example.com
+    networks:
+      - ztnet
+
+  peer0.org2.example.com:
+    image: hyperledger/fabric-peer:2.5
+    environment:
+      - CORE_PEER_ID=peer0.org2.example.com
+      - CORE_PEER_ADDRESS=peer0.org2.example.com:9051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:9051
+      - CORE_PEER_LOCALMSPID=Org2MSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/fabric/msp
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+    ports:
+      - "9051:9051"
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - ./organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/msp:/etc/hyperledger/fabric/msp
+      - ./organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls:/etc/hyperledger/fabric/tls
+      - peer0.org2.example.com:/var/hyperledger/production
+    depends_on:
+      - orderer.example.com
+    networks:
+      - ztnet
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    environment:
+      # Placeholders only; real values injected at deploy time.
+      - ZT_LISTEN_ADDR=0.0.0.0:8443
+      - ZT_UPSTREAM_URL=http://upstream.internal:8080
+      - ZT_FABRIC_PEER=peer0.org1.example.com:7051
+      - ZT_POLICY_CHANNEL=policy-channel
+      - ZT_AUDIT_CHANNEL=audit-channel
+      - ZT_POLICY_CC=policy
+      - ZT_AUDIT_CC=audit
+      - ZT_MSP_ID=Org1MSP
+      - ZT_TLS_CERT=/certs/tls.crt
+      - ZT_TLS_KEY=/certs/tls.key
+      - ZT_TRUST_ROOT=/certs/ca.crt
+    ports:
+      - "8443:8443"
+    volumes:
+      # Mount test-network crypto; never bake certs into the image.
+      - ./organizations/peerOrganizations/org1.example.com/users:/certs:ro
+    depends_on:
+      - peer0.org1.example.com
+      - peer0.org2.example.com
+    networks:
+      - ztnet
