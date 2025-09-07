@@ -1,0 +1,118 @@
+# deploy/k8s.yaml
+# Gateway Deployment + Service. mTLS certs come from a Secret (placeholder).
+# Fail-closed posture: no cert mount => the pod cannot serve, by design.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zt-gateway-tls
+  namespace: zt
+type: kubernetes.io/tls
+# REPLACE_ME: populate from the Fabric CA output. Never commit real material.
+# kubectl create secret tls zt-gateway-tls --cert=tls.crt --key=tls.key
+stringData:
+  tls.crt: "REPLACE_ME_PEM"
+  tls.key: "REPLACE_ME_PEM"
+  ca.crt: "REPLACE_ME_PEM"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zt-policy-gateway
+  namespace: zt
+  labels:
+    app: zt-policy-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: zt-policy-gateway
+  template:
+    metadata:
+      labels:
+        app: zt-policy-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: REPLACE_ME_REGISTRY/zt-policy-gateway:latest
+          ports:
+            - containerPort: 8443
+              name: https
+          env:
+            - name: ZT_LISTEN_ADDR
+              value: "0.0.0.0:8443"
+            - name: ZT_UPSTREAM_URL
+              value: "http://upstream.zt.svc.cluster.local:8080"
+            - name: ZT_FABRIC_PEER
+              value: "peer0-org1.zt.svc.cluster.local:7051"
+            - name: ZT_POLICY_CHANNEL
+              value: "policy-channel"
+            - name: ZT_AUDIT_CHANNEL
+              value: "audit-channel"
+            - name: ZT_POLICY_CC
+              value: "policy"
+            - name: ZT_AUDIT_CC
+              value: "audit"
+            - name: ZT_MSP_ID
+              value: "Org1MSP"
+            - name: ZT_TLS_CERT
+              value: "/certs/tls.crt"
+            - name: ZT_TLS_KEY
+              value: "/certs/tls.key"
+            - name: ZT_TRUST_ROOT
+              value: "/certs/ca.crt"
+          volumeMounts:
+            - name: tls
+              mountPath: /certs
+              readOnly: true
+          readinessProbe:
+            # Ready only when the listener is up and the trust root loaded.
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+      volumes:
+        - name: tls
+          secret:
+            secretName: zt-gateway-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zt-policy-gateway
+  namespace: zt
+spec:
+  selector:
+    app: zt-policy-gateway
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8443
+      protocol: TCP
+  type: ClusterIP
