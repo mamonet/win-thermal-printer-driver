@@ -1,0 +1,33 @@
+# .gitignore
+
+# Rust build output
+target/
+**/target/
+
+# Never commit real crypto material
+*.pem
+*.key
+*.crt
+crypto-config/
+organizations/
+channel-artifacts/
+system-genesis-block/
+
+# Fabric binaries and packaged chaincode
+bin/
+fabric-samples/
+*.tar.gz
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Test fixtures that hold generated certs
+tests/fixtures/*.der
+tests/fixtures/*.pem
+
+# Editor/OS noise
+.idea/
+.vscode/
+.DS_Store
